@@ -15,19 +15,19 @@ import redis.clients.jedis.Jedis;
 public class WikiCrawler {
 	// keeps track of where we started
 	private final String source;
-	
+
 	// the index where the results go
 	private JedisIndex index;
-	
+
 	// queue of URLs to be indexed
 	private Queue<String> queue = new LinkedList<String>();
-	
+
 	// fetcher used to get pages from Wikipedia
 	final static WikiFetcher wf = new WikiFetcher();
 
 	/**
 	 * Constructor.
-	 * 
+	 *
 	 * @param source
 	 * @param index
 	 */
@@ -39,43 +39,82 @@ public class WikiCrawler {
 
 	/**
 	 * Returns the number of URLs in the queue.
-	 * 
+	 *
 	 * @return
 	 */
 	public int queueSize() {
-		return queue.size();	
+		return queue.size();
 	}
 
 	/**
 	 * Gets a URL from the queue and indexes it.
-	 * @param b 
-	 * 
+	 * @param b
+	 *
 	 * @return Number of pages indexed.
 	 * @throws IOException
 	 */
 	public String crawl(boolean testing) throws IOException {
-        // FILL THIS IN!
-		return null;
+				Elements paragraphs;
+				String url = queue.poll();
+
+				if(url.equals(null)) {
+					System.out.println("Queue is empty");
+					return null;
+				}
+
+        if(testing) {
+					paragraphs = wf.readWikipedia(url);
+					System.out.println("Reading wikipedia.");
+				} else {
+					if(index.isIndexed(url) == true) {
+							System.out.println("URL is already indexed.");
+							return null;
+					} else {
+						System.out.println("Fetching wikipedia.");
+						paragraphs = wf.fetchWikipedia(url);
+					}
+				}
+
+				index.indexPage(url, paragraphs);
+				System.out.println("Queueing internal links.");
+				queueInternalLinks(paragraphs);
+				return url;
 	}
-	
+
 	/**
 	 * Parses paragraphs and adds internal links to the queue.
-	 * 
+	 *
 	 * @param paragraphs
 	 */
 	// NOTE: absence of access level modifier means package-level
 	void queueInternalLinks(Elements paragraphs) {
-        // FILL THIS IN!
+		Elements elems;
+		String shortUrl = null;
+		String longUrl = null;
+
+		for(Element para : paragraphs) {
+				elems = para.select("a[href]");
+
+				for (Element elem: elems) {
+					shortUrl = elem.attr("href");
+
+					if (shortUrl.contains("/wiki/")) {
+						longUrl = "https://en.wikipedia.org" + shortUrl;
+						queue.offer(longUrl);
+					}
+				}
+		}
 	}
 
+
 	public static void main(String[] args) throws IOException {
-		
+
 		// make a WikiCrawler
 		Jedis jedis = JedisMaker.make();
-		JedisIndex index = new JedisIndex(jedis); 
+		JedisIndex index = new JedisIndex(jedis);
 		String source = "https://en.wikipedia.org/wiki/Java_(programming_language)";
 		WikiCrawler wc = new WikiCrawler(source, index);
-		
+
 		// for testing purposes, load up the queue
 		Elements paragraphs = wf.fetchWikipedia(source);
 		wc.queueInternalLinks(paragraphs);
@@ -88,7 +127,7 @@ public class WikiCrawler {
             // REMOVE THIS BREAK STATEMENT WHEN crawl() IS WORKING
             break;
 		} while (res == null);
-		
+
 		Map<String, Integer> map = index.getCounts("the");
 		for (Entry<String, Integer> entry: map.entrySet()) {
 			System.out.println(entry);
